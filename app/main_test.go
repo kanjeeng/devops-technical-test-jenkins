@@ -15,7 +15,7 @@ func TestRootReturnsVersion(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	want := "Hello, DevOps! Ini Hotfix! version=9.9.9-test"
+	want := "Hello, DevOps! version=9.9.9-test"
 	if !strings.Contains(rec.Body.String(), want) {
 		t.Fatalf("body = %q, want it to contain %q", rec.Body.String(), want)
 	}

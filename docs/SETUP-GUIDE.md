@@ -312,7 +312,7 @@ Dari hasil pengujian di atas, kita dapat menarik beberapa poin analisis penting:
 
 * **Downtime Minimal (±1–2 Detik):** Karena arsitektur menggunakan *Volume Mount* Docker (`-v /opt/hello-devops/bin:/app/bin:ro`), proses *deploy* di belakang layar hanya bertindak menimpa file *binary* baru ke direktori *host* secara atomik, lalu memicu perintah `docker restart` kilat. Hal ini memangkas waktu pembaruan sistem secara drastis tanpa proses *build image* ulang di sisi server produksi.
 
-## 12. Bersihkan Resource
+## 13. Bersihkan Resource
 
 ```bash
 cd infra/terraform

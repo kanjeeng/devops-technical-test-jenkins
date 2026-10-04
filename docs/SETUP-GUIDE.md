@@ -296,6 +296,10 @@ Masuk kembali ke terminal App Server, lalu jalankan perintah verifikasi:
 
 ![lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status](../image/bagian3-07-after-demo-hotfix.png)
 
+Berikut adalah rekam jejak log pada **Console Output** Jenkins yang menunjukkan bahwa proses *hot-swap binary* dan *health check* berhasil dieksekusi dengan mulus tanpa *downtime* yang berarti:
+
+![Console Output Jenkins Hot-Swap Berhasil](../image/bagian3-09-console-hot-swap.png)
+
 ---
 
 ## Analisis Teknis Demo Hotfix

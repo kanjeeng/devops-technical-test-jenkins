@@ -470,7 +470,7 @@ Pipeline menangani potensi kegagalan di tengah jalan (*midway failure*) melalui 
 * **Pencadangan Otomatis (`.server.previous`):** Sebelum file binary baru menimpa sistem, skrip deployment (`deploy.sh`) secara otomatis mencadangkan binary yang sedang berjalan ke berkas tersembunyi `.server.previous` beserta hak akses aslinya.
 * **Pemeriksaan Kesehatan (Health Check) & Pemulihan Instan:** Setelah container direstart dengan binary baru, sistem melakukan validasi kesehatan (*health check*). Jika layanan gagal merespons atau mengalami *crash*, mekanisme skrip atau operator dapat langsung mengembalikan sistem ke kondisi stabil sebelumnya secara instan (*rollback*) menggunakan berkas cadangan `.server.previous` tanpa harus membangun ulang seluruh pipeline dari awal.
 
-Silakan merujuk ke [Skenario Rollback & Penanganan Gagal Deploy di Pipeline](#13-skenario-rollback--penanganan-gagal-deploy-di-pipeline) untuk penjelasan lengkap mengenai mekanisme pencadangan otomatis (`.server.previous`), validasi *health check*, serta simulasi pengujian kegagalan deployment.
+Silakan merujuk ke sesi [Skenario Rollback & Penanganan Gagal Deploy di Pipeline](docs/SETUP-GUIDE.md#13-skenario-rollback--penanganan-gagal-deploy-di-pipeline) untuk penjelasan lengkap mengenai mekanisme pencadangan otomatis (`.server.previous`), validasi *health check*, serta simulasi pengujian kegagalan deployment.
 
 ---
 

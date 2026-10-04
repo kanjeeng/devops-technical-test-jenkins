@@ -1,0 +1,136 @@
+// CI/CD pipeline: Checkout -> Test -> Build Image -> (Push) -> Deploy (hot-swap binary) -> Verify
+//
+// Credentials yang HARUS dibuat di Jenkins (Manage Jenkins > Credentials) - tidak ada secret di file ini:
+//   app-server-ssh        : "SSH Username with private key" (username: ubuntu)
+//   registry-credentials  : "Username with password"  (HANYA jika PUSH_IMAGE dicentang)
+//
+// Global env var (di-set otomatis oleh Terraform/user-data): APP_SERVER_HOST = IP private app server
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 20, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    parameters {
+        string(name: 'APP_HOST', defaultValue: '',
+               description: 'Opsional: override host tujuan deploy. Kosong = pakai env APP_SERVER_HOST')
+        string(name: 'BASE_VERSION', defaultValue: '1.0',
+               description: 'Prefix versi. Versi akhir: <BASE_VERSION>.<build number>-<commit>')
+        booleanParam(name: 'PUSH_IMAGE', defaultValue: false,
+                     description: 'Push image ke registry (butuh credential registry-credentials)')
+        string(name: 'REGISTRY', defaultValue: 'docker.io/YOUR_DOCKERHUB_USER',
+               description: 'Registry/namespace tujuan push')
+    }
+
+    environment {
+        APP_NAME        = 'hello-devops'
+        SSH_CRED_ID     = 'app-server-ssh'
+        REGISTRY_CRED   = 'registry-credentials'
+        GOFLAGS         = '-buildvcs=false'
+        PATH            = "/usr/local/go/bin:${env.PATH}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_SHORT   = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    env.APP_VERSION = "${params.BASE_VERSION}.${env.BUILD_NUMBER}-${env.GIT_SHORT}"
+                    env.IMAGE       = "${env.APP_NAME}:${env.APP_VERSION}"
+                    env.TARGET_HOST = params.APP_HOST?.trim() ? params.APP_HOST.trim() : (env.APP_SERVER_HOST ?: '')
+                    if (!env.TARGET_HOST) {
+                        error('Host tujuan deploy kosong. Set parameter APP_HOST atau env global APP_SERVER_HOST.')
+                    }
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.APP_VERSION}"
+                    echo "Version=${env.APP_VERSION} Image=${env.IMAGE} Target=${env.TARGET_HOST}"
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('app') {
+                    sh 'go version'
+                    sh 'go vet ./...'
+                    // Jika ada test gagal, stage ini merah dan stage berikutnya TIDAK dijalankan
+                    sh 'go test -v ./...'
+                }
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                dir('app') {
+                    sh '''
+                        docker build \
+                          --build-arg VERSION="${APP_VERSION}" \
+                          -t "${IMAGE}" \
+                          -t "${APP_NAME}:latest" .
+                        docker images "${APP_NAME}"
+                    '''
+                }
+            }
+        }
+
+        stage('Push') {
+            when { expression { return params.PUSH_IMAGE } }
+            steps {
+                withCredentials([usernamePassword(credentialsId: env.REGISTRY_CRED,
+                                                  usernameVariable: 'REG_USER',
+                                                  passwordVariable: 'REG_PASS')]) {
+                    // Single-quote: secret tidak di-interpolasi Groovy, hanya shell
+                    sh '''
+                        REMOTE="${REGISTRY}/${APP_NAME}:${APP_VERSION}"
+                        echo "$REG_PASS" | docker login "${REGISTRY%%/*}" -u "$REG_USER" --password-stdin
+                        docker tag "${IMAGE}" "${REMOTE}"
+                        docker push "${REMOTE}"
+                        docker logout "${REGISTRY%%/*}"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CRED_ID,
+                                                   keyFileVariable: 'SSH_KEY',
+                                                   usernameVariable: 'SSH_USER')]) {
+                    sh 'bash cicd/scripts/deploy.sh'
+                }
+            }
+        }
+
+        stage('Verify') {
+            steps {
+                sh '''
+                    for i in $(seq 1 10); do
+                      OUT="$(curl -fsS -m 3 "http://${TARGET_HOST}:8080/" || true)"
+                      echo "try $i: ${OUT}"
+                      echo "${OUT}" | grep -q "version=${APP_VERSION}" && exit 0
+                      sleep 2
+                    done
+                    echo "Verifikasi gagal: versi ${APP_VERSION} tidak terdeteksi" >&2
+                    exit 1
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "SUCCESS - ${env.APP_NAME} ${env.APP_VERSION} live di http://${env.TARGET_HOST}:8080/"
+        }
+        failure {
+            echo 'FAILED - lihat stage merah. Jika gagal di Deploy, hotfix-swap.sh sudah rollback otomatis ke binary sebelumnya.'
+        }
+        always {
+            sh 'docker image prune -f || true'
+        }
+    }
+}

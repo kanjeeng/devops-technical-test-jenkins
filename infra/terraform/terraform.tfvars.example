@@ -1,0 +1,11 @@
+# Salin ke terraform.tfvars lalu sesuaikan
+aws_region          = "ap-southeast-1"
+project_name        = "hello-devops"
+
+# WAJIB: IP publik Anda (cek: curl -s https://checkip.amazonaws.com)
+allowed_admin_cidrs = ["203.0.113.10/32"]
+
+# Opsional
+# jenkins_instance_type = "t3.medium"
+# app_instance_type     = "t3.micro"
+# go_version            = "1.22.10"

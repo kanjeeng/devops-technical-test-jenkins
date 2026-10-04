@@ -253,17 +253,17 @@ curl http://<IP-APP>:8080/        # Hello, DevOps! version=1.0.<build>-<commit>
 
 Bagian ini mendemonstrasikan cara melakukan pembaruan kode secara instan (*hotfix*) tanpa menghentikan atau menghapus *container* yang sedang berjalan.
 
-### A. Kondisi Awal (Before Hotfix)
+**A. Kondisi Awal (Before Hotfix)**
 
 Sebelum melakukan perubahan, lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status *container*-nya:
 
 ![lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status](../image/bagian3-06-before-demo-hotfix.png)
 
-### B. Ubah Teks di `app/main.go` dan `app/main_test.go`
+**B. Ubah Teks di `app/main.go` dan `app/main_test.go`**
 
 Buka proyek di editor kode Anda, lalu lakukan penyesuaian teks pada file utama aplikasi dan file pengujiannya.
 
-**1. File `app/main.go`:**
+***1. File `app/main.go`:***
 
 ```go
 // Ubah baris pemanggilan string respons menjadi:
@@ -271,7 +271,7 @@ fmt.Fprintf(w, "Hello, DevOps! Ini Hotfix! version=%s\n", version)
 
 ```
 
-**2. File `app/main_test.go`:**
+***2. File `app/main_test.go`:***
 
 ```go
 // Sesuaikan ekspektasi unit test agar selaras dengan output baru:
@@ -279,7 +279,7 @@ want := "Hello, DevOps! Ini Hotfix! version=9.9.9-test"
 
 ```
 
-### C. Commit, Push, dan Build Now di Jenkins
+**C. Commit, Push, dan Build Now di Jenkins**
 
 Kirimkan perubahan kode tersebut ke repositori GitHub Anda:
 
@@ -292,7 +292,7 @@ git push origin main
 
 Setelah itu, buka dashboard **Jenkins**, masuk ke job `hello-devops`, lalu klik **Build Now** dan tunggu hingga seluruh *stage* pipeline selesai dengan status sukses (*SUCCESS*).
 
-### D. Verifikasi Hasil Akhir (After Hotfix)
+**D. Verifikasi Hasil Akhir (After Hotfix)**
 
 Masuk kembali ke terminal App Server, lalu jalankan perintah verifikasi:
 

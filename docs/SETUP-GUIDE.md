@@ -249,6 +249,69 @@ curl http://<IP-APP>:8080/        # Hello, DevOps! version=1.0.<build>-<commit>
 
 ![curl ke App Server publik menampilkan versi hasil pipeline](../image/bagian3-05-curl-app-publik.png)
 
+## 12. Demo Hotfix Zero-Downtime Lewat Pipeline
+
+Bagian ini mendemonstrasikan cara melakukan pembaruan kode secara instan (*hotfix*) tanpa menghentikan atau menghapus *container* yang sedang berjalan.
+
+### A. Kondisi Awal (Before Hotfix)
+
+Sebelum melakukan perubahan, lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status *container*-nya:
+
+![lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status](../image/bagian3-06-before-demo-hotfix.png)
+
+### B. Ubah Teks di `app/main.go` dan `app/main_test.go`
+
+Buka proyek di editor kode Anda, lalu lakukan penyesuaian teks pada file utama aplikasi dan file pengujiannya.
+
+**1. File `app/main.go`:**
+
+```go
+// Ubah baris pemanggilan string respons menjadi:
+fmt.Fprintf(w, "Hello, DevOps! Ini Hotfix! version=%s\n", version)
+
+```
+
+**2. File `app/main_test.go`:**
+
+```go
+// Sesuaikan ekspektasi unit test agar selaras dengan output baru:
+want := "Hello, DevOps! Ini Hotfix! version=9.9.9-test"
+
+```
+
+### C. Commit, Push, dan Build Now di Jenkins
+
+Kirimkan perubahan kode tersebut ke repositori GitHub Anda:
+
+```bash
+git add app/main.go app/main_test.go
+git commit -m "feat: demo hotfix zero-downtime lewat pipeline"
+git push origin main
+
+```
+
+Setelah itu, buka dashboard **Jenkins**, masuk ke job `hello-devops`, lalu klik **Build Now** dan tunggu hingga seluruh *stage* pipeline selesai dengan status sukses (*SUCCESS*).
+
+### D. Verifikasi Hasil Akhir (After Hotfix)
+
+Masuk kembali ke terminal App Server, lalu jalankan perintah verifikasi:
+
+![lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status](../image/bagian3-07-after-demo-hotfix.png)
+
+---
+
+## Analisis Teknis Demo Hotfix
+
+Dari hasil pengujian di atas, kita dapat menarik beberapa poin analisis penting:
+
+* **Container ID Tetap Sama:** ID *container* (`8bb7a1b70db3`) tidak berubah sama sekali. Kolom `CREATED` menunjukkan waktu pembuatan awal (misal: 6 menit yang lalu), sedangkan kolom `STATUS` menunjukkan waktu *restart* yang baru (misal: `Up 40 seconds`). Ini membuktikan bahwa Jenkins tidak membuat *container* baru dari awal.
+
+
+* **Versi Berubah & Pesan Terperbarui:** Respons dari `curl` berhasil menampilkan teks `Ini Hotfix!` disertai hash *commit* atau nomor versi terbaru (`1.0.2-27e529d`).
+
+
+* **Downtime Minimal (±1–2 Detik):** Karena arsitektur menggunakan *Volume Mount* Docker (`-v /opt/hello-devops/bin:/app/bin:ro`), proses *deploy* di belakang layar hanya bertindak menimpa file *binary* baru ke direktori *host* secara atomik, lalu memicu perintah `docker restart` kilat. Hal ini memangkas waktu pembaruan sistem secara drastis tanpa proses *build image* ulang di sisi server produksi.
+
 ## 12. Bersihkan Resource
 
 ```bash

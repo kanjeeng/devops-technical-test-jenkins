@@ -16,8 +16,9 @@ Panduan ini mengikuti urutan pengerjaan di dokumentasi: **infrastruktur dulu**, 
 9. [Push proyek ke GitHub](#9-push-proyek-ke-github)
 10. [Credentials, job, dan build pertama](#10-credentials-job-dan-build-pertama)
 11. [Verifikasi & demo](#11-verifikasi--demo)
-12. [Bersihkan resource](#12-bersihkan-resource)
-13. [Daftar screenshot](#daftar-screenshot)
+12. [Demo Hotfix Zero-Downtime Lewat Pipeline](#12-demo-hotfix-zero-downtime-lewat-pipeline)
+13. [Skenario Rollback & Penanganan Gagal Deploy di Pipeline](#13-skenario-rollback--penanganan-gagal-deploy-di-pipeline)
+14. [Bersihkan resource](#14-bersihkan-resource)
 
 ---
 
@@ -253,33 +254,31 @@ curl http://<IP-APP>:8080/        # Hello, DevOps! version=1.0.<build>-<commit>
 
 Bagian ini mendemonstrasikan cara melakukan pembaruan kode secara instan (*hotfix*) tanpa menghentikan atau menghapus *container* yang sedang berjalan.
 
-**A. Kondisi Awal (Before Hotfix)**
+### A. Kondisi Awal (Before Hotfix)
 
 Sebelum melakukan perubahan, lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status *container*-nya:
 
 ![lakukan pengecekan pada App Server untuk melihat versi aplikasi yang sedang aktif serta status](../image/bagian3-06-before-demo-hotfix.png)
 
-**B. Ubah Teks di `app/main.go` dan `app/main_test.go`**
+### B. Ubah Teks di `app/main.go` dan `app/main_test.go`
 
 Buka proyek di editor kode Anda, lalu lakukan penyesuaian teks pada file utama aplikasi dan file pengujiannya.
 
-***1. File `app/main.go`:***
+**1. File `app/main.go`**
 
 ```go
 // Ubah baris pemanggilan string respons menjadi:
 fmt.Fprintf(w, "Hello, DevOps! Ini Hotfix! version=%s\n", version)
-
 ```
 
-***2. File `app/main_test.go`:***
+**2. File `app/main_test.go`**
 
 ```go
 // Sesuaikan ekspektasi unit test agar selaras dengan output baru:
 want := "Hello, DevOps! Ini Hotfix! version=9.9.9-test"
-
 ```
 
-**C. Commit, Push, dan Build Now di Jenkins**
+### C. Commit, Push, dan Build Now di Jenkins
 
 Kirimkan perubahan kode tersebut ke repositori GitHub Anda:
 
@@ -287,12 +286,11 @@ Kirimkan perubahan kode tersebut ke repositori GitHub Anda:
 git add app/main.go app/main_test.go
 git commit -m "feat: demo hotfix zero-downtime lewat pipeline"
 git push origin main
-
 ```
 
 Setelah itu, buka dashboard **Jenkins**, masuk ke job `hello-devops`, lalu klik **Build Now** dan tunggu hingga seluruh *stage* pipeline selesai dengan status sukses (*SUCCESS*).
 
-**D. Verifikasi Hasil Akhir (After Hotfix)**
+### D. Verifikasi Hasil Akhir (After Hotfix)
 
 Masuk kembali ke terminal App Server, lalu jalankan perintah verifikasi:
 
@@ -312,7 +310,84 @@ Dari hasil pengujian di atas, kita dapat menarik beberapa poin analisis penting:
 
 * **Downtime Minimal (±1–2 Detik):** Karena arsitektur menggunakan *Volume Mount* Docker (`-v /opt/hello-devops/bin:/app/bin:ro`), proses *deploy* di belakang layar hanya bertindak menimpa file *binary* baru ke direktori *host* secara atomik, lalu memicu perintah `docker restart` kilat. Hal ini memangkas waktu pembaruan sistem secara drastis tanpa proses *build image* ulang di sisi server produksi.
 
-## 13. Bersihkan Resource
+## 13. Skenario Rollback & Penanganan Gagal Deploy di Pipeline
+
+Bagian ini menjelaskan mekanisme pengamanan otomatis (*automatic rollback*) pada pipeline Jenkins jika tahap pembaruan atau *deployment* mengalami kegagalan di tengah jalan pada App Server.
+
+### A. Analisis Error pada Konsol Jenkins (`consoleText`)
+
+Ketika sebuah build mengalami kegagalan (misalnya karena kesalahan pengujian kode atau kendala konektivitas SSH saat deploy), log konsol pada Jenkins biasanya menunjukkan pola sebagai berikut:
+
+![Contoh Pesan Error di Konsol](../image/bagian3-08-error-rollback.png)
+
+* **Apa yang Sebenarnya Terjadi?**
+Jenkins mengeksekusi tahapan pipeline secara berurutan (*sequential stages*). Berdasarkan log di atas, tahap **Test** gagal karena terjadi ketidaksesuaian (*mismatch*) antara ekspektasi nilai pada unit test (`main_test.go`) dengan respons riil aplikasi. Akibat kegagalan ini, Jenkins langsung menghentikan eksekusi (*abort*) pipeline sebelum masuk ke tahap **Build Image** maupun **Deploy**. Ini berarti server produksi (App Server) sama sekali tidak tersentuh oleh kode yang rusak.
+
+---
+
+### B. Konsep Mekanisme Rollback di Belakang Layar
+
+Apabila kegagalan terjadi tepat di tengah-tengah tahap *deployment* (misalnya proses transfer file binary berhasil tetapi layanan gagal bernavigasi/restart), skrip *deployment* (`cicd/scripts/deploy.sh`) menerapkan prinsip jaring pengaman ganda:
+
+1. **Pencadangan Berkas Lama (`cp -a`):** Sebelum binary baru dipasang ke direktori target, skrip secara otomatis membuat salinan binary yang sedang berjalan ke berkas tersembunyi `.server.previous` lengkap dengan atribut izin aslinya.
+2. **Penggantian Atomik (`install` + `mv`):** Binary baru diunggah dan diganti secara instan tanpa jeda kosong untuk mencegah *partial write*.
+3. **Health Check Otomatis:** Setelah *container* direstart, skrip memantau endpoint `/` atau *health check*. Jika aplikasi gagal merespons atau *crash*, skrip otomatis memicu prosedur *rollback* dengan mengembalikan binary dari `.server.previous` dan merestart ulang *container* ke versi yang stabil sebelumnya.
+
+---
+
+### C. Praktik Pengujian Skenario Gagal & Rollback (Simulasi Praktik)
+
+Untuk membuktikan bagaimana pipeline bereaksi ketika terjadi kegagalan saat *deploy*, Anda dapat melakukan simulasi berikut:
+
+**1. Sengaja Merusak Kode / Unit Test (Simulasi Gagal)**
+
+Buka file `app/main_test.go` di editor Anda, lalu ubah ekspektasi unit test secara sengaja agar proses pengujian di awal pipeline mengalami kegagalan (*FAIL*):
+
+```go
+// Sengaja dibuat salah agar unit test gagal
+want := "SALAH_EKSPEKTASI_UNTUK_MENGUJI_GAGAL"
+```
+
+**2. Commit, Push, dan Build di Jenkins**
+
+Kirimkan perubahan yang rusak tersebut ke repositori GitHub:
+
+```bash
+git add app/main_test.go
+git commit -m "test: simulasi gagal pipeline untuk uji rollback"
+git push origin main
+```
+
+Buka dashboard **Jenkins**, masuk ke job `hello-devops`, lalu klik **Build Now**.
+
+### 3. Amati Perilaku Pipeline & Hasil Konsol
+
+* **Tahap Test Gagal:** Pipeline akan langsung berhenti (*abort*) pada tahap *Test* karena unit test mendeteksi ketidaksesuaian teks (seperti terlihat pada `consoleText`).
+* **Perlindungan Produksi:** Karena pipeline gagal sebelum mencapai tahap *Deploy*, App Server aman dari file rusak. *Container* di produksi tetap menggunakan binary stabil versi sebelumnya tanpa mengalami *downtime* atau *corrupt*.
+
+### 4. Pemulihan (Recovery)
+
+Setelah pengujian selesai, kembalikan kode uji seperti semula di editor Anda:
+
+```bash
+git checkout app/main_test.go
+git push origin main
+```
+
+Lalu jalankan **Build Now** kembali di Jenkins hingga pipeline kembali hijau (*SUCCESS*).
+
+---
+
+## Analisis Teknis Penanganan Kegagalan (Rollback Analysis)
+
+Dari simulasi dan arsitektur skrip yang diterapkan, berikut adalah poin analisis penting mengenai ketahanan sistem:
+
+* **Pemberhentian Dini (Fail Fast):** Pipeline menerapkan prinsip *fail fast*. Jika ada tahap awal yang rusak (seperti unit test atau kompilasi), proses tidak akan pernah meneruskan perintah ke server produksi. Hal ini mencegah *bug* atau file rusak terkirim ke pengguna akhir.
+* **Integritas Server Produksi:** Dengan mekanisme pencadangan otomatis (`.server.previous`) di dalam direktori `/opt/hello-devops/bin/`, jika suatu saat kegagalan lolos hingga tahap *restart container*, skrip *deploy* lokal di App Server dapat langsung memutar balik (*rollback*) binary dalam hitungan detik tanpa menunggu pipeline ulang dari awal.
+* **Zero Disruption:** Pengguna tidak akan merasakan dampak negatif karena sistem produksi hanya akan memuat versi baru apabila seluruh rangkaian pengujian di pipeline terverifikasi sukses 100%.
+
+
+## 14. Bersihkan Resource
 
 ```bash
 cd infra/terraform

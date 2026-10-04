@@ -27,7 +27,7 @@ func newMux() *http.ServeMux {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprintf(w, "Hello, DevOps! version=%s\n", version)
+		fmt.Fprintf(w, "Hello, DevOps! [HOTFIX APPLIED] version=%s\n", version)
 	})
 
 	return mux

@@ -249,8 +249,6 @@ curl http://<IP-APP>:8080/        # Hello, DevOps! version=1.0.<build>-<commit>
 
 ![curl ke App Server publik menampilkan versi hasil pipeline](../image/bagian3-05-curl-app-publik.png)
 
-**Demo hotfix lewat pipeline:** ubah teks di `app/main.go`, commit & push, **Build Now** lagi. Container ID tetap, versi berubah, downtime ±1–2 detik.
-
 ## 12. Bersihkan Resource
 
 ```bash

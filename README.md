@@ -448,6 +448,30 @@ Pendekatan yang dipilih adalah **me-mount direktori binary dari host** (opsi ked
 
 Screenshot yang akan dilampirkan: `image/bagian3-*.png` (lihat daftar di [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md#daftar-screenshot)).
 
+Bagian ini mengintegrasikan seluruh proses pengujian, *build*, hingga pengiriman otomatis ke App Server menggunakan Jenkins Pipeline (`cicd/Jenkinsfile`).
+
+### A. Alur Tahapan Pipeline (`Jenkinsfile`)
+
+![Alur Tahapan Pipeline](image/bagian3-04-stage-view-hijau.png)
+
+* **Checkout:** Mengambil kode sumber terbaru dari repositori GitHub.
+* **Test:** Menjalankan `go vet` dan `go test` untuk memastikan integritas kode.
+* **Build Image:** Membangun image Docker menggunakan parameter versi/commit.
+* **Deploy:** Menggunakan skrip `cicd/scripts/deploy.sh` untuk mengekstrak binary dari image hasil build, mengirimkannya lewat `scp` ke App Server, lalu mengeksekusi skrip *hotfix swap* secara aman.
+* **Verify:** Memastikan layanan merespons dengan kode HTTP `200 OK` dan versi yang sesuai.
+
+---
+
+### B. Penjelasan Singkat: Bagaimana Pipeline Ini Menangani Rollback jika Tahap Deployment Gagal di Tengah Jalan?
+
+Pipeline menangani potensi kegagalan di tengah jalan (*midway failure*) melalui kombinasi pemberhentian dini (*fail-fast*) dan mekanisme jaring pengaman atomik di server target:
+
+* **Prinsip Fail-Fast di Tingkat Pipeline:** Jika tahap awal seperti unit test (`go test`) atau kompilasi gagal, Jenkins langsung menghentikan proses (*abort*). Server produksi sama sekali tidak tersentuh, sehingga tidak ada risiko kode rusak atau setengah jadi yang terkirim ke lingkungan produksi.
+* **Pencadangan Otomatis (`.server.previous`):** Sebelum file binary baru menimpa sistem, skrip deployment (`deploy.sh`) secara otomatis mencadangkan binary yang sedang berjalan ke berkas tersembunyi `.server.previous` beserta hak akses aslinya.
+* **Pemeriksaan Kesehatan (Health Check) & Pemulihan Instan:** Setelah container direstart dengan binary baru, sistem melakukan validasi kesehatan (*health check*). Jika layanan gagal merespons atau mengalami *crash*, mekanisme skrip atau operator dapat langsung mengembalikan sistem ke kondisi stabil sebelumnya secara instan (*rollback*) menggunakan berkas cadangan `.server.previous` tanpa harus membangun ulang seluruh pipeline dari awal.
+
+Silakan merujuk ke [Skenario Rollback & Penanganan Gagal Deploy di Pipeline](#13-skenario-rollback--penanganan-gagal-deploy-di-pipeline) untuk penjelasan lengkap mengenai mekanisme pencadangan otomatis (`.server.previous`), validasi *health check*, serta simulasi pengujian kegagalan deployment.
+
 ---
 
 ## Dokumen Lain
